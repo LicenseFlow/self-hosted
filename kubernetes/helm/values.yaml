@@ -1,0 +1,225 @@
+# LicenseFlow Helm Chart Values
+# Override these values for your deployment
+
+# ═══════════════════════════════════════════════════════════════
+# APPLICATION CONFIGURATION
+# ═══════════════════════════════════════════════════════════════
+
+replicaCount: 2
+
+image:
+  repository: licenseflow/self-hosted
+  tag: "latest"
+  pullPolicy: Always
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Application settings
+config:
+  appUrl: "https://licenses.example.com"
+  nodeEnv: "production"
+  logLevel: "info"
+
+# ═══════════════════════════════════════════════════════════════
+# SECRETS
+# ═══════════════════════════════════════════════════════════════
+
+secrets:
+  # JWT secret for token signing (minimum 32 characters)
+  jwtSecret: "your-super-secret-jwt-key-minimum-32-characters"
+  
+  # Stripe integration (optional)
+  stripeSecretKey: ""
+  stripeWebhookSecret: ""
+  
+  # SMTP configuration (optional)
+  smtpHost: ""
+  smtpPort: "587"
+  smtpUser: ""
+  smtpPass: ""
+  smtpFrom: "noreply@example.com"
+
+# ═══════════════════════════════════════════════════════════════
+# SERVICE & NETWORKING
+# ═══════════════════════════════════════════════════════════════
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+  hosts:
+    - host: licenses.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: licenseflow-tls
+      hosts:
+        - licenses.example.com
+
+# ═══════════════════════════════════════════════════════════════
+# RESOURCES & SCALING
+# ═══════════════════════════════════════════════════════════════
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# ═══════════════════════════════════════════════════════════════
+# HEALTH CHECKS
+# ═══════════════════════════════════════════════════════════════
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+
+# ═══════════════════════════════════════════════════════════════
+# POSTGRESQL
+# ═══════════════════════════════════════════════════════════════
+
+postgresql:
+  enabled: true
+  auth:
+    username: licenseflow
+    password: "your-secure-postgres-password"
+    database: licenseflow
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+
+# External database (if postgresql.enabled is false)
+externalDatabase:
+  host: ""
+  port: 5432
+  database: licenseflow
+  username: licenseflow
+  password: ""
+  existingSecret: ""
+  existingSecretPasswordKey: ""
+
+# ═══════════════════════════════════════════════════════════════
+# REDIS
+# ═══════════════════════════════════════════════════════════════
+
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 1Gi
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+# External Redis (if redis.enabled is false)
+externalRedis:
+  host: ""
+  port: 6379
+  password: ""
+
+# ═══════════════════════════════════════════════════════════════
+# POD SETTINGS
+# ═══════════════════════════════════════════════════════════════
+
+podAnnotations: {}
+
+podSecurityContext: {}
+
+securityContext: {}
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: licenseflow
+          topologyKey: kubernetes.io/hostname
+
+# ═══════════════════════════════════════════════════════════════
+# MAINTENANCE
+# ═══════════════════════════════════════════════════════════════
+
+cronjobs:
+  cleanupExpiredLeases:
+    enabled: true
+    schedule: "*/5 * * * *"
+  cleanupExpiredSessions:
+    enabled: true
+    schedule: "0 * * * *"
+
+# ═══════════════════════════════════════════════════════════════
+# MONITORING
+# ═══════════════════════════════════════════════════════════════
+
+metrics:
+  enabled: false
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+
+# ═══════════════════════════════════════════════════════════════
+# BACKUP
+# ═══════════════════════════════════════════════════════════════
+
+backup:
+  enabled: false
+  schedule: "0 2 * * *"
+  retention: 7
+  s3:
+    bucket: ""
+    region: ""
+    accessKey: ""
+    secretKey: ""

@@ -1,0 +1,416 @@
+# LicenseFlow Self-Hosted Kubernetes Deployment
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: licenseflow
+  labels:
+    app.kubernetes.io/name: licenseflow
+    app.kubernetes.io/component: namespace
+---
+# ConfigMap for application configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: licenseflow-config
+  namespace: licenseflow
+  labels:
+    app.kubernetes.io/name: licenseflow
+    app.kubernetes.io/component: config
+data:
+  APP_URL: "https://licenses.example.com"
+  SMTP_PORT: "587"
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+---
+# Secret for sensitive data
+apiVersion: v1
+kind: Secret
+metadata:
+  name: licenseflow-secrets
+  namespace: licenseflow
+  labels:
+    app.kubernetes.io/name: licenseflow
+    app.kubernetes.io/component: secrets
+type: Opaque
+stringData:
+  DATABASE_URL: "postgresql://licenseflow:changeme@postgres-service:5432/licenseflow"
+  JWT_SECRET: "your-super-secret-jwt-key-minimum-32-characters"
+  STRIPE_SECRET_KEY: ""
+  SMTP_HOST: ""
+  SMTP_USER: ""
+  SMTP_PASS: ""
+---
+# PostgreSQL StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: licenseflow
+  labels:
+    app.kubernetes.io/name: licenseflow
+    app.kubernetes.io/component: database
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: "licenseflow"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: password
+            - name: POSTGRES_DB
+              value: "licenseflow"
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - licenseflow
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - licenseflow
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: init-scripts
+          configMap:
+            name: postgres-init
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+---
+# PostgreSQL Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: licenseflow
+type: Opaque
+stringData:
+  password: "your-secure-postgres-password"
+---
+# PostgreSQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: licenseflow
+  labels:
+    app.kubernetes.io/name: licenseflow
+    app.kubernetes.io/component: database
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: postgres
+---
+# Redis Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: licenseflow
+  labels:
+    app.kubernetes.io/name: licenseflow
+    app.kubernetes.io/component: cache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          command:
+            - redis-server
+            - --appendonly
+            - "yes"
+            - --maxmemory
+            - "256mb"
+            - --maxmemory-policy
+            - allkeys-lru
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          livenessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 5
+            periodSeconds: 3
+---
+# Redis Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: licenseflow
+  labels:
+    app.kubernetes.io/name: licenseflow
+    app.kubernetes.io/component: cache
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: 6379
+  selector:
+    app: redis
+---
+# LicenseFlow Application Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: licenseflow
+  namespace: licenseflow
+  labels:
+    app.kubernetes.io/name: licenseflow
+    app.kubernetes.io/component: application
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: licenseflow
+  template:
+    metadata:
+      labels:
+        app: licenseflow
+    spec:
+      containers:
+        - name: licenseflow
+          image: licenseflow/self-hosted:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+              name: http
+            - containerPort: 8000
+              name: functions
+          envFrom:
+            - configMapRef:
+                name: licenseflow-config
+            - secretRef:
+                name: licenseflow-secrets
+          env:
+            - name: REDIS_URL
+              value: "redis://redis-service:6379"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+          securityContext:
+            readOnlyRootFilesystem: false
+            runAsNonRoot: false
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: licenseflow
+                topologyKey: kubernetes.io/hostname
+---
+# LicenseFlow Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: licenseflow-service
+  namespace: licenseflow
+  labels:
+    app.kubernetes.io/name: licenseflow
+    app.kubernetes.io/component: application
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 80
+      name: http
+  selector:
+    app: licenseflow
+---
+# Ingress for external access
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: licenseflow-ingress
+  namespace: licenseflow
+  labels:
+    app.kubernetes.io/name: licenseflow
+    app.kubernetes.io/component: ingress
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1s"
+spec:
+  tls:
+    - hosts:
+        - licenses.example.com
+      secretName: licenseflow-tls
+  rules:
+    - host: licenses.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: licenseflow-service
+                port:
+                  number: 80
+---
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: licenseflow-hpa
+  namespace: licenseflow
+  labels:
+    app.kubernetes.io/name: licenseflow
+    app.kubernetes.io/component: autoscaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: licenseflow
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+---
+# PodDisruptionBudget for high availability
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: licenseflow-pdb
+  namespace: licenseflow
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: licenseflow
+---
+# CronJob for cleaning expired leases
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cleanup-expired-leases
+  namespace: licenseflow
+  labels:
+    app.kubernetes.io/name: licenseflow
+    app.kubernetes.io/component: maintenance
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: cleanup
+              image: postgres:15-alpine
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  psql $DATABASE_URL -c "SELECT process_expired_leases();"
+              envFrom:
+                - secretRef:
+                    name: licenseflow-secrets
+          restartPolicy: OnFailure
