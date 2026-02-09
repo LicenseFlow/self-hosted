@@ -256,11 +256,11 @@ resources:
 
 ### Getting Help
 
-- 📚 [Documentation](https://docs.licenseflow.io/self-hosted)
+- 📚 [Documentation](https://docs.licenseflow.dev/self-hosted)
 - 💬 [Community Discord](https://discord.gg/licenseflow)
-- 📧 [Enterprise Support](mailto:enterprise@licenseflow.io)
+- 📧 [Enterprise Support](mailto:enterprise@licenseflow.dev)
 
 ## 📄 License
 
 LicenseFlow Self-Hosted Edition requires an Enterprise license for production use.
-Contact sales@licenseflow.io for licensing options.
+Contact sales@licenseflow.dev for licensing options.
