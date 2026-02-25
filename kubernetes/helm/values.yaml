@@ -27,8 +27,12 @@ config:
 # ═══════════════════════════════════════════════════════════════
 
 secrets:
-  # JWT secret for token signing (minimum 32 characters)
-  jwtSecret: "your-super-secret-jwt-key-minimum-32-characters"
+  # REQUIRED: Set via --set or external secret manager (Vault, AWS Secrets Manager)
+  # Deployment will fail if jwtSecret is not provided
+  jwtSecret: ""
+  
+  # Use existingSecret to reference a pre-created Kubernetes Secret
+  existingSecret: ""
   
   # Stripe integration (optional)
   stripeSecretKey: ""
@@ -113,7 +117,7 @@ postgresql:
   enabled: true
   auth:
     username: licenseflow
-    password: "your-secure-postgres-password"
+    password: ""  # REQUIRED: Set via --set or existingSecret
     database: licenseflow
   primary:
     persistence:

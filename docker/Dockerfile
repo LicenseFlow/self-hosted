@@ -20,7 +20,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Build Edge Functions runtime
-FROM denoland/deno:1.40.0 AS functions-builder
+FROM denoland/deno:2.1.0 AS functions-builder
 
 WORKDIR /app
 
@@ -28,7 +28,7 @@ WORKDIR /app
 COPY supabase/functions ./functions
 
 # Cache dependencies
-RUN deno cache --unstable functions/*/index.ts || true
+RUN deno cache functions/*/index.ts || true
 
 # Stage 3: Production image with Nginx + Deno
 FROM nginx:alpine AS production
