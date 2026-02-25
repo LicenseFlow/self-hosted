@@ -117,7 +117,11 @@ postgresql:
       allowExternal: false
 ```
 
-### TLS Configuration
+### TLS / SSL
+
+**Nginx (recommended for Docker):** See the full [Nginx TLS guide](nginx-tls/README.md) with a production-ready config, Let's Encrypt auto-renewal, HSTS, OCSP stapling, and rate-limiting. A drop-in config file is at [`nginx-tls/licenseflow.conf`](nginx-tls/licenseflow.conf).
+
+**Kubernetes Ingress + cert-manager:**
 
 ```yaml
 # Helm values for TLS
