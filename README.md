@@ -104,6 +104,21 @@ openssl rand -base64 24 | tr -d '/+='
 └───────────────────────┘ └─────────────────┘
 ```
 
+## 🛡️ Disaster Recovery & High Availability
+
+For comprehensive guidance on disaster recovery, load balancing, failover, and multi-regional deployments, see the dedicated guide:
+
+👉 **[Disaster Recovery, HA & Multi-Region Guide](./DISASTER-RECOVERY.md)**
+
+Covers:
+- RPO/RTO targets and automated backup strategies
+- Load balancing for Docker (Nginx) and Kubernetes (Ingress + HPA)
+- Database failover with pg_auto_failover / Patroni
+- Redis Sentinel for cache HA
+- Multi-regional deployment with GeoDNS and read replicas
+
+---
+
 ## 🔒 Security Hardening
 
 ### Network Security
