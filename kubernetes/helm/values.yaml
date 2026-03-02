@@ -215,15 +215,34 @@ metrics:
     interval: 30s
 
 # ═══════════════════════════════════════════════════════════════
-# BACKUP
+# BACKUP & DISASTER RECOVERY
+# See self-hosted/DISASTER-RECOVERY.md for full documentation
 # ═══════════════════════════════════════════════════════════════
 
 backup:
   enabled: false
   schedule: "0 2 * * *"
-  retention: 7
+  retention: 30
   s3:
     bucket: ""
     region: ""
     accessKey: ""
     secretKey: ""
+
+# ═══════════════════════════════════════════════════════════════
+# DISASTER RECOVERY
+# ═══════════════════════════════════════════════════════════════
+
+disasterRecovery:
+  enabled: false
+  # PostgreSQL streaming replication
+  replication:
+    enabled: false
+    readReplicas: 0
+  # Automatic failover with Patroni
+  failover:
+    enabled: false
+  # Multi-region support
+  multiRegion:
+    enabled: false
+    regions: []

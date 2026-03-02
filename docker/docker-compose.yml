@@ -1,5 +1,6 @@
 # LicenseFlow Self-Hosted Edition
 # Complete stack with PostgreSQL, Redis, and LicenseFlow
+# For disaster recovery, backup, and HA configuration, see DISASTER-RECOVERY.md
 version: '3.8'
 
 services:
@@ -81,6 +82,12 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-noreply@example.com}
       
+      # Backup (optional, see DISASTER-RECOVERY.md)
+      BACKUP_ENABLED: ${BACKUP_ENABLED:-false}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      BACKUP_S3_REGION: ${BACKUP_S3_REGION:-us-east-1}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      
       # Application
       APP_URL: ${APP_URL:-http://localhost:3000}
       NODE_ENV: production
@@ -88,6 +95,32 @@ services:
       - "3000:80"
     volumes:
       - ./logs:/var/log/nginx
+    networks:
+      - licenseflow-network
+
+  # PostgreSQL Backup (optional, enable with --profile backup)
+  pg_backup:
+    image: postgres:15-alpine
+    container_name: licenseflow-backup
+    restart: "no"
+    profiles:
+      - backup
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-licenseflow}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      PGDATABASE: ${POSTGRES_DB:-licenseflow}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      BACKUP_S3_REGION: ${BACKUP_S3_REGION:-us-east-1}
+    volumes:
+      - ./backups:/backups
+    entrypoint: >
+      sh -c "pg_dump -Fc -f /backups/licenseflow-$$(date +%Y%m%d-%H%M%S).dump && 
+             find /backups -name '*.dump' -mtime +${BACKUP_RETENTION_DAYS:-30} -delete &&
+             echo 'Backup complete'"
     networks:
       - licenseflow-network
 

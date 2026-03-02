@@ -1,0 +1,87 @@
+{{- if .Values.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "licenseflow.fullname" . }}-pg-backup
+  labels:
+    {{- include "licenseflow.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            {{- include "licenseflow.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pg-backup
+              image: postgres:15-alpine
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  BACKUP_FILE="/tmp/licenseflow-${TIMESTAMP}.dump"
+                  echo "Starting PostgreSQL backup..."
+                  pg_dump -Fc -f "${BACKUP_FILE}"
+                  echo "Backup created: ${BACKUP_FILE}"
+                  
+                  # Upload to S3 if configured
+                  if [ -n "${BACKUP_S3_BUCKET}" ]; then
+                    echo "Uploading to S3..."
+                    # Note: Install aws-cli or use a custom image with S3 support
+                    # aws s3 cp "${BACKUP_FILE}" "s3://${BACKUP_S3_BUCKET}/backups/licenseflow-${TIMESTAMP}.dump"
+                    echo "S3 upload would go here - use a custom image with aws-cli installed"
+                  fi
+                  
+                  echo "Backup complete"
+              env:
+                - name: PGHOST
+                  value: {{ include "licenseflow.databaseHost" . }}
+                - name: PGPORT
+                  value: "5432"
+                - name: PGDATABASE
+                  {{- if .Values.postgresql.enabled }}
+                  value: {{ .Values.postgresql.auth.database | quote }}
+                  {{- else }}
+                  value: {{ .Values.externalDatabase.database | quote }}
+                  {{- end }}
+                - name: PGUSER
+                  {{- if .Values.postgresql.enabled }}
+                  value: {{ .Values.postgresql.auth.username | quote }}
+                  {{- else }}
+                  value: {{ .Values.externalDatabase.username | quote }}
+                  {{- end }}
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      {{- if .Values.postgresql.enabled }}
+                      name: {{ include "licenseflow.fullname" . }}-postgresql
+                      key: password
+                      {{- else if .Values.externalDatabase.existingSecret }}
+                      name: {{ .Values.externalDatabase.existingSecret }}
+                      key: {{ .Values.externalDatabase.existingSecretPasswordKey | default "password" }}
+                      {{- else }}
+                      name: {{ include "licenseflow.fullname" . }}-db-secret
+                      key: password
+                      {{- end }}
+                - name: BACKUP_S3_BUCKET
+                  value: {{ .Values.backup.s3.bucket | quote }}
+                - name: BACKUP_S3_REGION
+                  value: {{ .Values.backup.s3.region | quote }}
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+{{- end }}
