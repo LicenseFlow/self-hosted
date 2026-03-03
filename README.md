@@ -98,10 +98,10 @@ openssl rand -base64 24 | tr -d '/+='
 │  └─────────────────┘    └─────────────────┘                     │
 └─────────────┬───────────────────┬───────────────────────────────┘
               │                   │
-┌─────────────▼─────────┐ ┌───────▼─────────┐
-│     PostgreSQL        │ │      Redis      │
-│   (Primary Data)      │ │   (Cache/Rate)  │
-└───────────────────────┘ └─────────────────┘
+┌─────────────▼─────────┐ ┌───────▼─────────┐ ┌───────▼─────────┐
+│     PostgreSQL        │ │      Redis      │ │  MinIO / S3      │
+│   (Primary Data)      │ │   (Cache/Rate)  │ │ (Artifact Store) │
+└───────────────────────┘ └─────────────────┘ └─────────────────┘
 ```
 
 ## 🛡️ Disaster Recovery & High Availability
@@ -155,6 +155,14 @@ ingress:
 The built-in Nginx configuration includes rate limiting:
 - API endpoints: 100 requests/second
 - Auth endpoints: 10 requests/second
+
+## 🚀 Advanced Features
+
+### Release Management & Artifact Storage
+Self-hosted LicenseFlow uses MinIO for S3-compatible storage by default. To use external S3 storage (AWS, Google Cloud Storage, DigitalOcean Spaces), update the `STORAGE_*` variables in your `.env` file.
+
+### Environment Scoping
+Manage multiple developer environments (e.g., Development, Staging, Production) within a single instance. Each environment provides isolated license management and entitlement enforcement.
 
 ## 📊 Monitoring
 

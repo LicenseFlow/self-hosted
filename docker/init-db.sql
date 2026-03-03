@@ -55,6 +55,21 @@ CREATE TABLE IF NOT EXISTS organizations (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ═══════════════════════════════════════════════════════════════
+-- ENVIRONMENTS (Environment Scoping)
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS environments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    description TEXT,
+    is_default BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(organization_id, name)
+);
+
 CREATE TABLE IF NOT EXISTS organization_members (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
@@ -93,6 +108,7 @@ CREATE TABLE IF NOT EXISTS licenses (
     metadata JSONB DEFAULT '{}',
     is_floating BOOLEAN DEFAULT FALSE,
     hardware_binding_enabled BOOLEAN DEFAULT FALSE,
+    environment_id UUID REFERENCES environments(id),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -107,6 +123,7 @@ CREATE TABLE IF NOT EXISTS license_activations (
     last_seen_at TIMESTAMPTZ DEFAULT NOW(),
     deactivated_at TIMESTAMPTZ,
     deactivation_reason TEXT,
+    environment_id UUID REFERENCES environments(id),
     UNIQUE(license_id, device_id)
 );
 
@@ -141,6 +158,7 @@ CREATE TABLE IF NOT EXISTS license_leases (
     release_reason TEXT,
     ip_address INET,
     user_agent TEXT,
+    environment_id UUID REFERENCES environments(id),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -262,6 +280,9 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_license ON audit_logs(license_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_licenses_environment ON licenses(environment_id);
+CREATE INDEX IF NOT EXISTS idx_activations_environment ON license_activations(environment_id);
+CREATE INDEX IF NOT EXISTS idx_leases_environment ON license_leases(environment_id);
 
 -- ═══════════════════════════════════════════════════════════════
 -- FUNCTIONS
