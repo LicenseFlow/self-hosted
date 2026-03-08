@@ -172,15 +172,31 @@ Manage multiple developer environments (e.g., Development, Staging, Production) 
 - `GET /health/ready` - Readiness probe (includes DB check)
 - `GET /health/live` - Liveness probe
 
-### Prometheus Metrics (Optional)
+### Prometheus + Grafana Monitoring
 
-```yaml
-# Enable in Helm values
-metrics:
-  enabled: true
-  serviceMonitor:
-    enabled: true
-```
+Pre-configured monitoring templates are included in `monitoring/`:
+
+1. **Start Prometheus** with the provided config:
+   ```bash
+   docker run -d --name prometheus \
+     -v $(pwd)/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml \
+     -p 9090:9090 prom/prometheus
+   ```
+
+2. **Start Grafana** and import the dashboard:
+   ```bash
+   docker run -d --name grafana -p 3001:3000 grafana/grafana
+   ```
+   Then import `monitoring/grafana-dashboard.json` via Grafana UI (Dashboards → Import → Upload JSON).
+
+3. **Dashboard panels include**:
+   - API request rate & latency (p95)
+   - Error rate by endpoint
+   - Active licenses & activation trends
+   - Database connection pool usage
+   - CPU & memory usage
+
+> For production, add `postgres_exporter`, `redis_exporter`, and `node_exporter` containers to expose metrics. See `monitoring/prometheus.yml` for scrape targets.
 
 ### Log Aggregation
 
