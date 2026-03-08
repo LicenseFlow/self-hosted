@@ -67,6 +67,16 @@ EOF
 # Create log directories
 mkdir -p /var/log/supervisor
 mkdir -p /var/log/nginx
+mkdir -p /var/log/licenseflow
+
+# Run database migrations if enabled
+if [ "${RUN_MIGRATIONS:-true}" = "true" ] && [ -f "/app/migrate.sh" ]; then
+    echo "→ Running database migrations..."
+    chmod +x /app/migrate.sh
+    /app/migrate.sh up || {
+        echo "WARNING: Migrations failed, continuing anyway..."
+    }
+fi
 
 echo "✓ Configuration complete"
 echo "→ Starting services..."
