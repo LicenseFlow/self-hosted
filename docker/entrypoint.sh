@@ -20,6 +20,12 @@ echo "→ Validating configuration..."
 check_env "DATABASE_URL"
 check_env "JWT_SECRET"
 
+if [ ${#JWT_SECRET} -lt 32 ] || [ "$JWT_SECRET" = "your-super-secret-jwt-key-minimum-32-characters" ]; then
+    echo "ERROR: JWT_SECRET must be at least 32 characters long and not the default example value."
+    echo "Generate a secure secret using: openssl rand -base64 32"
+    exit 1
+fi
+
 # Optional but recommended
 if [ -z "$SUPABASE_URL" ]; then
     echo "WARNING: SUPABASE_URL not set, using local database mode"
