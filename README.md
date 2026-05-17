@@ -72,6 +72,26 @@ kubectl apply -f kubernetes/deployment.yaml
 | `SMTP_PASS` | Email password | - |
 | `REDIS_URL` | Redis connection for caching | - |
 
+### Edge-Function Secrets (required for full feature parity)
+
+The bundled edge-function runtime ships 75+ functions. The following secrets unlock
+features beyond core licensing — without them the corresponding endpoints will
+return errors but the rest of the app continues to work.
+
+| Variable | Powers | How to generate |
+|----------|--------|-----------------|
+| `CRON_SECRET` | `pg_cron` / `pg_net` scheduled jobs (trial conversion, dunning, SOC 2 evidence) | `openssl rand -hex 32` |
+| `MASTER_ENCRYPTION_KEY` | AES-GCM envelope encryption of private signing keys | `openssl rand -base64 32` |
+| `LOVABLE_API_KEY` | AI support chat + AI insights via Lovable AI Gateway | Lovable workspace |
+| `RESEND_API_KEY` | Transactional emails | resend.com |
+| `STRIPE_PUBLISHABLE_KEY` | Frontend Stripe.js | Stripe dashboard |
+| `STRIPE_CONNECT_CLIENT_ID` | Vendor marketplace onboarding | Stripe Connect settings |
+| `STRIPE_CONNECT_WEBHOOK_SECRET` | Connect platform webhooks | Stripe webhook config |
+| `WEBHOOK_HMAC_SECRET` | HMAC-SHA256 signing of outbound webhooks | `openssl rand -hex 32` |
+
+In Kubernetes/Helm, add these to your `values.yaml` under the `secret:` block;
+in Docker Compose copy them into `.env` (see `docker/.env.example`).
+
 ### Generating Secrets
 
 ```bash
