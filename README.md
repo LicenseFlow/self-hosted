@@ -2,6 +2,8 @@
 
 Deploy LicenseFlow on your own infrastructure with complete control over your data and configuration.
 
+**Current version:** `2.2.0` (matches the SDK line and Helm `Chart.yaml` `appVersion`).
+
 ## 🚀 Quick Start
 
 ### Prerequisites
