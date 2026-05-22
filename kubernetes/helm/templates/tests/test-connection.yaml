@@ -1,0 +1,63 @@
+{{- if .Values.tests.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "licenseflow.fullname" . }}-test-connection
+  labels:
+    {{- include "licenseflow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: smoke
+      image: "{{ .Values.tests.image.repository }}:{{ .Values.tests.image.tag }}"
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 10001
+        capabilities:
+          drop: [ALL]
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          set -eu
+          BASE="http://{{ include "licenseflow.fullname" . }}:{{ .Values.service.port }}"
+          echo "==> GET $BASE/health"
+          code=$(curl -s -o /tmp/body -w "%{http_code}" "$BASE/health" || true)
+          echo "    HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "FAIL: /health returned $code"; cat /tmp/body; exit 1
+          fi
+          {{- if .Values.tests.licenseKey }}
+          echo "==> POST $BASE/v1/licenses/verify (smoke license)"
+          code=$(curl -s -o /tmp/body -w "%{http_code}" \
+            -H 'content-type: application/json' \
+            -d '{"license_key":"{{ .Values.tests.licenseKey }}"}' \
+            "$BASE/v1/licenses/verify" || true)
+          echo "    HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "FAIL: verify returned $code"; cat /tmp/body; exit 1
+          fi
+          {{- end }}
+          echo "OK"
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      {{- with .Values.resources.test }}
+      resources:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  volumes:
+    - name: tmp
+      emptyDir: {}
+{{- end }}
