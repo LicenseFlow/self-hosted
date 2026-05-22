@@ -71,6 +71,17 @@ Redis URL helper
 {{- end }}
 
 {{/*
+Database host helper (used by backup CronJob and external integrations)
+*/}}
+{{- define "licenseflow.databaseHost" -}}
+{{- if .Values.postgresql.enabled }}
+{{- printf "%s-postgresql" (include "licenseflow.fullname" .) }}
+{{- else }}
+{{- .Values.externalDatabase.host }}
+{{- end }}
+{{- end }}
+
+{{/*
 Secret name helper
 */}}
 {{- define "licenseflow.secretName" -}}
