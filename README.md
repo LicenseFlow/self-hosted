@@ -4,6 +4,73 @@ Deploy LicenseFlow on your own infrastructure with complete control over your da
 
 **Current version:** `2.2.0` (matches the SDK line and Helm `Chart.yaml` `appVersion`).
 
+## Hardened-by-default Helm chart (v2.2.0+)
+
+The Helm chart at `self-hosted/kubernetes/helm/` is hardened for production
+out of the box. Highlights:
+
+- **Fail-fast secrets** — `helm install` aborts immediately if `secrets.jwtSecret`
+  is missing or shorter than 32 chars, if Postgres has no password, or if you
+  enabled Stripe without a webhook secret.
+- **External secret managers** — set `secrets.create=false` and
+  `secrets.existingSecret=<name>` to wire up External Secrets Operator,
+  Vault Agent Injector, or SealedSecrets.
+- **Non-root pods** — runs as UID/GID `10001`, drops all Linux capabilities,
+  disables privilege escalation, applies the `RuntimeDefault` seccomp profile.
+  Compatible with OpenShift `restricted-v2` SCC and Pod Security Admission
+  `restricted` out of the box.
+- **NetworkPolicy** — default-deny ingress + egress with explicit allow rules
+  for ingress-nginx, bundled Postgres/Redis, and kube-DNS. Add custom
+  egress CIDRs (Stripe, SMTP, S3) via `networkPolicy.extraEgressCIDRs`.
+- **Split resource budgets** — separate `resources.api`, `resources.cron`,
+  `resources.test` so a runaway cron cannot starve the API pods.
+- **`helm test`** — ships a smoke-test pod that hits `/health` and (optionally)
+  verifies a known license key. Run `helm test <release>` after install.
+
+### Read-only root filesystem (opt-in)
+
+The bundled image writes to `/var/log`, `/var/cache/nginx`, and
+`/usr/share/nginx/html` at boot. To run with `readOnlyRootFilesystem: true`,
+set:
+
+```yaml
+securityContext:
+  readOnlyRootFilesystem: true
+extraVolumes:
+  - { name: tmp,         emptyDir: {} }
+  - { name: var-log,     emptyDir: {} }
+  - { name: var-cache,   emptyDir: {} }
+  - { name: nginx-html,  emptyDir: {} }
+extraVolumeMounts:
+  - { name: tmp,         mountPath: /tmp }
+  - { name: var-log,     mountPath: /var/log }
+  - { name: var-cache,   mountPath: /var/cache/nginx }
+  - { name: nginx-html,  mountPath: /usr/share/nginx/html }
+```
+
+### External secret managers
+
+The chart never logs secret values. Recommended patterns:
+
+- **External Secrets Operator** — create an `ExternalSecret` that targets your
+  vault and renders a `Secret` named `licenseflow-secrets`. Then install with
+  `--set secrets.create=false --set secrets.existingSecret=licenseflow-secrets`.
+- **HashiCorp Vault Agent Injector** — annotate the pod with
+  `vault.hashicorp.com/agent-inject` and consume the file via the
+  `JWT_SECRET` env var.
+- **SealedSecrets** — commit a `SealedSecret` named `licenseflow-secrets`
+  alongside your values and reference it via `secrets.existingSecret`.
+
+### `helm test`
+
+```bash
+helm test <release> --namespace <ns> --logs
+```
+
+The test pod inherits the same security context as the application (non-root,
+all caps dropped, read-only root) so a passing `helm test` also proves your
+cluster's PSA / SCC configuration is compatible.
+
 ## 🚀 Quick Start
 
 ### Prerequisites
