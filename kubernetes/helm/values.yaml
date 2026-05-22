@@ -27,6 +27,11 @@ config:
 # ═══════════════════════════════════════════════════════════════
 
 secrets:
+  # When false, the chart does not render its own Secret object. Use this when
+  # secrets are managed externally (External Secrets Operator, Vault Agent,
+  # SealedSecrets, etc.) and surfaced via `secrets.existingSecret` below.
+  create: true
+
   # REQUIRED: Set via --set or external secret manager (Vault, AWS Secrets Manager)
   # Deployment will fail if jwtSecret is not provided
   jwtSecret: ""
@@ -74,13 +79,31 @@ ingress:
 # RESOURCES & SCALING
 # ═══════════════════════════════════════════════════════════════
 
+# Split per-workload resource budgets so a runaway cron or backup job cannot
+# starve the API pods. `resources` (legacy) is kept for backwards compatibility
+# and applied to the main app container when `resources.api` is empty.
 resources:
-  requests:
-    cpu: 200m
-    memory: 256Mi
-  limits:
-    cpu: 500m
-    memory: 512Mi
+  api:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 768Mi
+  cron:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  test:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
 
 autoscaling:
   enabled: true
@@ -174,9 +197,61 @@ externalRedis:
 
 podAnnotations: {}
 
-podSecurityContext: {}
+# Secure-by-default pod-level security context. Overridable.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
 
-securityContext: {}
+# Secure-by-default container-level security context.
+#
+# `readOnlyRootFilesystem` is OFF by default because the bundled image writes
+# to /var/cache/nginx, /var/log, and /usr/share/nginx/html at boot. Operators
+# who want a fully read-only root can flip this on and add the matching
+# emptyDir mounts under `extraVolumes` / `extraVolumeMounts`. See the README.
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 10001
+  capabilities:
+    drop:
+      - ALL
+
+# Optional extra volumes / mounts for read-only-rootfs deployments or custom
+# CA bundles. Rendered verbatim into the Pod spec / container spec.
+extraVolumes: []
+extraVolumeMounts: []
+
+# Network isolation. Default-deny ingress + egress with explicit allow rules
+# for ingress controller, intra-chart Postgres/Redis, and kube-DNS.
+networkPolicy:
+  enabled: true
+  # Namespace label that identifies the ingress controller. Override for
+  # non-standard installs (e.g. Traefik, HAProxy, OpenShift Router).
+  ingressNamespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: ingress-nginx
+  # Allow-list of additional egress CIDRs (Stripe, SMTP relays, S3, etc.).
+  # Example:
+  #   extraEgressCIDRs:
+  #     - 169.254.169.254/32   # cloud metadata (avoid!)
+  #     - 0.0.0.0/0            # open egress (not recommended)
+  extraEgressCIDRs: []
+
+# Optional helm test configuration. The test pod issues an HTTP GET against
+# the /health endpoint and optionally verifies a known license key.
+tests:
+  enabled: true
+  # If set, the test pod will additionally call the public license verify
+  # endpoint with this key and assert a 200 response.
+  licenseKey: ""
+  image:
+    repository: curlimages/curl
+    tag: "8.10.1"
 
 nodeSelector: {}
 
