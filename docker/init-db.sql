@@ -889,4 +889,85 @@ BEGIN
 END;
 $$;
 
-COMMENT ON DATABASE licenseflow IS 'LicenseFlow Self-Hosted Edition Database — Schema v2.0';
+COMMENT ON DATABASE licenseflow IS 'LicenseFlow Self-Hosted Edition Database — Schema v2.1.0';
+
+-- ============================================================================
+-- LICENSE SEATS & ORGADMIN DELEGATION SYSTEM (v2.1.0)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.license_seats (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    license_id UUID NOT NULL REFERENCES public.licenses(id) ON DELETE CASCADE,
+    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    seat_status VARCHAR(50) NOT NULL DEFAULT 'unassigned',
+    assigned_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_license_seats_org ON public.license_seats(organization_id);
+CREATE INDEX IF NOT EXISTS idx_license_seats_license ON public.license_seats(license_id);
+CREATE INDEX IF NOT EXISTS idx_license_seats_user ON public.license_seats(user_id);
+
+ALTER TABLE public.license_seats ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view seats in their organization"
+    ON public.license_seats FOR SELECT
+    USING (
+        organization_id IN (
+            SELECT organization_id FROM public.organization_members
+            WHERE user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "OrgAdmins can manage seats in their organization"
+    ON public.license_seats FOR ALL
+    USING (
+        organization_id IN (
+            SELECT organization_id FROM public.organization_members
+            WHERE user_id = auth.uid() AND role IN ('owner', 'admin')
+        )
+    );
+
+-- Function: Resolve Identity Entitlements (Self-Hosted)
+CREATE OR REPLACE FUNCTION public.resolve_identity_entitlements(
+    p_organization_id UUID,
+    p_product_id UUID,
+    p_user_id UUID
+)
+RETURNS TABLE (
+    licensed BOOLEAN,
+    seats_total INT,
+    seats_used INT,
+    seat_status TEXT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_seats_total INT := 0;
+    v_seats_used INT := 0;
+    v_is_licensed BOOLEAN := FALSE;
+    v_user_seat_status TEXT := 'unassigned';
+BEGIN
+    SELECT COUNT(*), COUNT(user_id)
+    INTO v_seats_total, v_seats_used
+    FROM public.license_seats
+    WHERE organization_id = p_organization_id;
+
+    IF EXISTS (
+        SELECT 1 FROM public.license_seats
+        WHERE organization_id = p_organization_id
+          AND user_id = p_user_id
+          AND seat_status = 'assigned'
+    ) THEN
+        v_is_licensed := TRUE;
+        v_user_seat_status := 'assigned';
+    END IF;
+
+    RETURN QUERY SELECT v_is_licensed, v_seats_total, v_seats_used, v_user_seat_status;
+END;
+$$;
