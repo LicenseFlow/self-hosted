@@ -187,6 +187,31 @@ services:
     networks:
       - licenseflow-network
 
+  # Usage Event Worker — processes metering events from Redis Streams
+  # Part of the Data Plane event-driven architecture (shock absorber)
+  usage-worker:
+    build:
+      context: ../..
+      dockerfile: self-hosted/docker/Dockerfile
+    container_name: licenseflow-usage-worker
+    restart: unless-stopped
+    profiles:
+      - workers
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-licenseflow}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-licenseflow}
+      REDIS_URL: redis://redis:6379
+      WORKER_MODE: usage-consumer
+      WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE:-500}
+      WORKER_FLUSH_INTERVAL_MS: ${WORKER_FLUSH_INTERVAL_MS:-5000}
+      NODE_ENV: production
+    networks:
+      - licenseflow-network
+
 volumes:
   postgres_data:
     driver: local
