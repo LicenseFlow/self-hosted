@@ -14,21 +14,40 @@ check_env() {
     fi
 }
 
-echo "→ Validating configuration..."
+echo "→ Validating configuration and security posture..."
 
 # Required variables
 check_env "DATABASE_URL"
 check_env "JWT_SECRET"
 
-if [ ${#JWT_SECRET} -lt 32 ] || [ "$JWT_SECRET" = "your-super-secret-jwt-key-minimum-32-characters" ]; then
-    echo "ERROR: JWT_SECRET must be at least 32 characters long and not the default example value."
-    echo "Generate a secure secret using: openssl rand -base64 32"
+# Reject insecure/default JWT secrets
+if [ ${#JWT_SECRET} -lt 32 ] || [ "$JWT_SECRET" = "your-super-secret-jwt-key-minimum-32-characters" ] || [ "$JWT_SECRET" = "changeme" ]; then
+    echo "❌ SECURITY ERROR: JWT_SECRET must be at least 32 characters long and not a default placeholder."
+    echo "   Generate a secure secret using: openssl rand -base64 32"
+    exit 1
+fi
+
+# Reject default database credentials in production
+if echo "$DATABASE_URL" | grep -qiE "(password|changeme|postgres:postgres|admin123)"; then
+    echo "❌ SECURITY ERROR: Insecure or default database password detected in DATABASE_URL."
+    echo "   Please configure a strong, unique PostgreSQL password before starting."
+    exit 1
+fi
+
+# Validate MinIO / S3 credentials if configured
+if [ "$MINIO_ROOT_PASSWORD" = "strongpassword-change-me" ] || [ "$MINIO_ROOT_PASSWORD" = "minioadmin" ]; then
+    echo "⚠️  SECURITY WARNING: Default MINIO_ROOT_PASSWORD detected. Change this in production."
+fi
+
+# Validate Master Encryption Key if provided
+if [ -n "$MASTER_ENCRYPTION_KEY" ] && [ ${#MASTER_ENCRYPTION_KEY} -lt 32 ]; then
+    echo "❌ SECURITY ERROR: MASTER_ENCRYPTION_KEY must be at least 32 characters long."
     exit 1
 fi
 
 # Optional but recommended
 if [ -z "$SUPABASE_URL" ]; then
-    echo "WARNING: SUPABASE_URL not set, using local database mode"
+    echo "ℹ️  Notice: SUPABASE_URL not set, using local database standalone mode"
 fi
 
 # Wait for database to be ready
