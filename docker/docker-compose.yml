@@ -61,7 +61,8 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-licenseflow}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-licenseflow}
 
       # Auth & Security
-      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-min-32-chars}
+      # Required: must be supplied via .env, no insecure default is provided.
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set (min 32 chars)}
 
       # Supabase compatibility (optional for full Supabase features)
       SUPABASE_URL: ${SUPABASE_URL:-}
