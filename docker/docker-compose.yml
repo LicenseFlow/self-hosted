@@ -206,9 +206,13 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-licenseflow}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-licenseflow}
       REDIS_URL: redis://redis:6379
+      REDIS_STREAM_KEY: ${REDIS_STREAM_KEY:-lf:stream:usage}
+      REDIS_GROUP: ${REDIS_GROUP:-lf:cg:usage-processors}
       WORKER_MODE: usage-consumer
       WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE:-500}
       WORKER_FLUSH_INTERVAL_MS: ${WORKER_FLUSH_INTERVAL_MS:-5000}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
       NODE_ENV: production
     networks:
       - licenseflow-network

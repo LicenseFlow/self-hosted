@@ -971,3 +971,88 @@ BEGIN
     RETURN QUERY SELECT v_is_licensed, v_seats_total, v_seats_used, v_user_seat_status;
 END;
 $$;
+
+-- ═══════════════════════════════════════════════════════════════
+-- USAGE INTELLIGENCE, METRICS & COMMERCIAL INSIGHTS
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS public.usage_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+    environment_id UUID REFERENCES public.environments(id) ON DELETE SET NULL,
+    customer_id TEXT NOT NULL,
+    customer_email TEXT,
+    license_id UUID REFERENCES public.licenses(id) ON DELETE SET NULL,
+    entitlement_id UUID REFERENCES public.entitlements(id) ON DELETE SET NULL,
+    api_key_id UUID REFERENCES public.api_keys(id) ON DELETE SET NULL,
+    event_type TEXT NOT NULL,
+    event_name TEXT NOT NULL,
+    quantity NUMERIC NOT NULL DEFAULT 1,
+    unit TEXT NOT NULL DEFAULT 'units',
+    dimensions JSONB DEFAULT '{}'::jsonb,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    idempotency_key TEXT,
+    occurred_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_events_idempotency 
+ON public.usage_events (organization_id, idempotency_key) 
+WHERE idempotency_key IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_usage_events_org_time ON public.usage_events (organization_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_events_customer ON public.usage_events (organization_id, customer_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_events_license ON public.usage_events (license_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_events_metric ON public.usage_events (organization_id, event_name, occurred_at DESC);
+
+CREATE TABLE IF NOT EXISTS public.usage_aggregates_daily (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+    license_id UUID REFERENCES public.licenses(id) ON DELETE CASCADE,
+    customer_id TEXT NOT NULL,
+    metric_name TEXT NOT NULL,
+    day_bucket DATE NOT NULL,
+    total_quantity NUMERIC NOT NULL DEFAULT 0,
+    event_count INT NOT NULL DEFAULT 0,
+    unit TEXT NOT NULL DEFAULT 'units',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(organization_id, license_id, customer_id, metric_name, day_bucket)
+);
+
+CREATE INDEX IF NOT EXISTS idx_usage_aggr_org_day ON public.usage_aggregates_daily (organization_id, day_bucket DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_aggr_customer ON public.usage_aggregates_daily (organization_id, customer_id);
+
+CREATE TABLE IF NOT EXISTS public.quota_policies (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    metric_name TEXT NOT NULL,
+    warning_threshold_pct INT NOT NULL DEFAULT 70,
+    critical_threshold_pct INT NOT NULL DEFAULT 85,
+    exceeded_threshold_pct INT NOT NULL DEFAULT 100,
+    action_on_exceeded TEXT NOT NULL DEFAULT 'BLOCK',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_quota_policies_org ON public.quota_policies (organization_id);
+
+CREATE TABLE IF NOT EXISTS public.usage_alerts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+    license_id UUID REFERENCES public.licenses(id) ON DELETE SET NULL,
+    customer_id TEXT NOT NULL,
+    metric_name TEXT NOT NULL,
+    threshold_reached INT NOT NULL,
+    severity TEXT NOT NULL,
+    current_value NUMERIC NOT NULL,
+    limit_value NUMERIC NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    acknowledged_at TIMESTAMPTZ,
+    resolved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_usage_alerts_org_status ON public.usage_alerts (organization_id, status, created_at DESC);
+
