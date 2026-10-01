@@ -1,0 +1,80 @@
+# LicenseFlow Sovereign & Air-Gapped Helm Values Override
+# Use this values file for completely air-gapped sovereign Kubernetes clusters.
+#
+# Usage:
+#   helm install licenseflow-sovereign ./helm -f values.yaml -f values-sovereign.yaml
+
+replicaCount: 3
+
+config:
+  appUrl: "http://licenseflow.sovereign.local"
+  nodeEnv: "production"
+  logLevel: "info"
+
+# Sovereign & Air-Gapped Enforcement Flags
+sovereign:
+  enabled: true
+  airGapped: true
+  telemetryEnabled: false
+  phoneHomeEnabled: false
+  localKmsEnabled: true
+  localKmsSecret: "licenseflow-sovereign-keys"
+  offlineLeaseTtlSeconds: 2592000 # 30 days
+  clockRollbackGraceSeconds: 60
+
+# Image configuration for private/air-gapped registry
+image:
+  repository: "registry.internal.sovereign.local/licenseflow/control-plane"
+  tag: "2.4.0"
+  pullPolicy: IfNotPresent
+
+# Network isolation: strict zero-egress NetworkPolicy
+networkPolicy:
+  enabled: true
+  ingressNamespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: ingress-nginx
+  # Strictly empty - no external egress allowed
+  extraEgressCIDRs: []
+
+# PostgreSQL local subchart override for air-gap
+postgresql:
+  enabled: true
+  auth:
+    database: licenseflow_sovereign
+    username: sovereign_admin
+  primary:
+    persistence:
+      enabled: true
+      size: 50Gi
+
+# Redis local subchart override for sub-millisecond edge policy cache
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 1024mb
+      - --maxmemory-policy
+      - allkeys-lru
+    persistence:
+      enabled: true
+      size: 10Gi
+
+# Volume mounts for local cryptographic root keys
+extraVolumes:
+  - name: sovereign-keys-volume
+    secret:
+      secretName: licenseflow-sovereign-keys
+      defaultMode: 256 # 0400 read-only
+
+extraVolumeMounts:
+  - name: sovereign-keys-volume
+    mountPath: /run/secrets/sovereign
+    readOnly: true

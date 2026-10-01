@@ -1,0 +1,138 @@
+# LicenseFlow Sovereign & Air-Gapped Control Plane
+# Complete isolated stack with internal PostgreSQL, high-throughput Redis Policy Cache,
+# and local cryptographic key storage for zero-internet environments.
+#
+# Key Features:
+# - Zero outbound internet requirement (AIR_GAPPED=true, TELEMETRY_ENABLED=false)
+# - Isolated internal Docker network (no default gateway / no external egress)
+# - Embedded local Ed25519 root keys for offline lease issuance and verification
+# - Local cryptographic Merkle ledger sealing and tamper-evident storage
+# - Dedicated Redis L2 edge policy cache with sub-millisecond evaluation
+version: "3.8"
+
+services:
+  # Sovereign Database (Isolated PostgreSQL 15)
+  postgres-sovereign:
+    image: postgres:15-alpine
+    container_name: licenseflow-sovereign-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${SOVEREIGN_DB_USER:-sovereign_admin}
+      POSTGRES_PASSWORD: ${SOVEREIGN_DB_PASSWORD:-sovereign_secret_change_me}
+      POSTGRES_DB: ${SOVEREIGN_DB_NAME:-licenseflow_sovereign}
+    volumes:
+      - sovereign_pg_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./init-sovereign.sql:/docker-entrypoint-initdb.d/02-sovereign.sql:ro
+    networks:
+      - sovereign-airgap-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${SOVEREIGN_DB_USER:-sovereign_admin}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # High-Throughput Redis L2 Edge Policy Cache
+  redis-sovereign:
+    image: redis:7-alpine
+    container_name: licenseflow-sovereign-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --tcp-backlog 511
+      --timeout 0
+      --tcp-keepalive 300
+    volumes:
+      - sovereign_redis_data:/data
+    networks:
+      - sovereign-airgap-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # LicenseFlow Sovereign Control Plane Application
+  licenseflow-sovereign:
+    build:
+      context: ../..
+      dockerfile: self-hosted/docker/Dockerfile
+    container_name: licenseflow-sovereign-app
+    restart: unless-stopped
+    depends_on:
+      postgres-sovereign:
+        condition: service_healthy
+      redis-sovereign:
+        condition: service_healthy
+    environment:
+      # Air-Gapped Sovereign Enforcement
+      AIR_GAPPED: "true"
+      SOVEREIGN_MODE: "true"
+      TELEMETRY_ENABLED: "false"
+      PHONE_HOME_ENABLED: "false"
+      EXTERNAL_BILLING_ENABLED: "false"
+      
+      # Database Connection
+      DATABASE_URL: postgresql://${SOVEREIGN_DB_USER:-sovereign_admin}:${SOVEREIGN_DB_PASSWORD:-sovereign_secret_change_me}@postgres-sovereign:5432/${SOVEREIGN_DB_NAME:-licenseflow_sovereign}
+      
+      # Redis Policy Cache Connection
+      REDIS_URL: redis://redis-sovereign:6379
+      EDGE_CACHE_ENABLED: "true"
+      EDGE_CACHE_MAX_TTL_SECONDS: "3600"
+      
+      # Security & Offline Cryptographic Signing Keys
+      JWT_SECRET: ${SOVEREIGN_JWT_SECRET:-sovereign-airgap-jwt-secret-min-32-chars-required}
+      OFFLINE_SIGNING_KEY_PATH: /run/secrets/sovereign_signing_key.pem
+      OFFLINE_KEY_ID: sovereign-root-key-01
+      
+      # Local Storage (Local filesystem mount instead of external cloud bucket)
+      STORAGE_DRIVER: local
+      STORAGE_LOCAL_PATH: /var/lib/licenseflow/artifacts
+      
+      # Networking & Ports
+      APP_URL: ${SOVEREIGN_APP_URL:-http://localhost:8080}
+      PORT: 80
+      NODE_ENV: production
+    ports:
+      - "8080:80"
+    volumes:
+      - sovereign_artifacts:/var/lib/licenseflow/artifacts
+      - ./sovereign-keys:/run/secrets:ro
+      - ./logs:/var/log/nginx
+    networks:
+      - sovereign-airgap-net
+
+  # Local MinIO S3-Compatible Artifact Storage (for air-gapped sovereign releases)
+  minio-sovereign:
+    image: minio/minio:latest
+    container_name: licenseflow-sovereign-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${SOVEREIGN_STORAGE_USER:-sovereign_storage}
+      MINIO_ROOT_PASSWORD: ${SOVEREIGN_STORAGE_PASS:-sovereign_storage_secret}
+    volumes:
+      - sovereign_minio_data:/data
+    networks:
+      - sovereign-airgap-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  sovereign-airgap-net:
+    driver: bridge
+    # internal: true restricts containers to communicate ONLY amongst themselves
+    # with zero route to the public internet / external host networks
+    internal: true
+
+volumes:
+  sovereign_pg_data:
+  sovereign_redis_data:
+  sovereign_artifacts:
+  sovereign_minio_data:
