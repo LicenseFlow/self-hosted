@@ -84,7 +84,7 @@ services:
       EDGE_CACHE_MAX_TTL_SECONDS: "3600"
       
       # Security & Offline Cryptographic Signing Keys
-      JWT_SECRET: ${SOVEREIGN_JWT_SECRET:-sovereign-airgap-jwt-secret-min-32-chars-required}
+      JWT_SECRET: ${SOVEREIGN_JWT_SECRET:?SOVEREIGN_JWT_SECRET must be set (min 32 chars)}
       OFFLINE_SIGNING_KEY_PATH: /run/secrets/sovereign_signing_key.pem
       OFFLINE_KEY_ID: sovereign-root-key-01
       
